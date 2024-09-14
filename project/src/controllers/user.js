@@ -5,15 +5,45 @@ import {uploadOnCloudinary} from "../utils/cloudinary.js"
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose";
+/* The concepts related to the acess and refresh token :
+1->acess token : these topken are short lived when user logins and it get gets 
+acess to the token which is acess token the then it sends back to the 
+cliejt browser .
+lifetime: it typically lives for minutes to hours ,once expired no longer able to usable
 
+2->Refresh token :
+  a refrsh token is used to obtain new acess token ,without wanted the user to neter the details 
+  of the user agian
+  when the acess token expires then the  client sends the refrsh token 
+ tot he server to get a new acess token ,so it maintains the user session
+ lifetime: the lifeteme is possibly tot he days to months
+
+3->example:
+Example:
+When the user’s 15-minute access token expires in the e-commerce app, the app can use the refresh token
+ (which might be valid for 1 month) to request a new access token without requiring the user to log in again. 
+  
+ 4-> How they work together:
+ ->user login get the both tokens
+ ->the acess token is used for each API call ,if the token is valid then server process the request
+ ->when the acess token expires the client needs new  one,so in that time
+ ->the client sends the refresh token to the server to get the new acess token
+ ->if user wants to logout the refrehs topken can be revoked
+ */
 
 const generateAccessAndRefereshTokens = async(userId) =>{
     try {
+        //the generateAcccessRefreshTokens function accepts the user id as the 
+        //argument and then check in the database if the user if already exists
         const user = await User.findById(userId)
         const accessToken = user.generateAccessToken()
         const refreshToken = user.generateRefreshToken()
-
+        // The newly generated refresh token is stored in the user's record in the database.
+        // This allows the server to validate the refresh token later when the user requests a new access token
         user.refreshToken = refreshToken
+        // This saves the user’s updated information (with the new refresh token) to the database.
+        //. The { validateBeforeSave: false } option skips schema validation (if any) during saving, which can be useful for 
+        //performance or when validations are not required in this specific step.
         await user.save({ validateBeforeSave: false })
 
         return {accessToken, refreshToken}
