@@ -379,7 +379,7 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
   if (!fullName || !email) {
     throw new ApiError(400, "All fields are required");
   }
-
+//set is an operator 
   const user = await User.findByIdAndUpdate(
     req.user?._id,
     {
@@ -406,7 +406,10 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
   //TODO: delete old image - assignment
 
   const avatar = await uploadOnCloudinary(avatarLocalPath);
-
+    //this declares a const named avatar ot hold the result of the function
+    //avatarloaclPath is the path of the file that is being uploaded
+    //this checks that the if the ipload was unsucessfull by veryfying the
+    // if the avatar object doesnt contain the valid URL
   if (!avatar.url) {
     throw new ApiError(400, "Error while uploading on avatar");
   }
@@ -424,6 +427,13 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, user, "Avatar image updated successfully"));
+/* the flow:
+1->the avatr is being uplaoded on the cloudinary  using the cloudinary fun
+2->if the uplaod files throw the error
+3->then avatr field in the db is updated witht he URL of the uploaded 
+avatar
+4->the updated user doc is returned without the passowrd field */
+
 });
 
 const updateUserCoverImage = asyncHandler(async (req, res) => {
@@ -462,22 +472,39 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
   if (!username?.trim()) {
     throw new ApiError(400, "username is missing");
   }
-
+//the current collection is ->User
   const channel = await User.aggregate([
     {
+        //filters doc to find the user with the specified username
       $match: {
         username: username?.toLowerCase(),
       },
     },
     {
+        //lookup stage in mongoDb aggregation framework is used to perform the a left outer
+        //join with two collections
+        //from->collectionToJoin
+        //localField->field from the current collection
+        //foriegnField->field from the other collection
+        //as->the new field
       $lookup: {
+        //the model/collection name is Subscription but it will add the s and make it store in db as pluar with lowercase
+        //so that why wehn we are acesing it from the monogDb we are basically using this way
+        //User and Subscription join 
         from: "subscriptions",
+        //the field in the User collection->current collection
         localField: "_id",
+        //field in the subscription collection  ->the collection to join with
         foreignField: "channel",
         as: "subscribers",
       },
     },
-    {
+    //the effect of lookup:
+    //->agrregation adds new fields to the to the docments in the collection
+    //to which we aggregate
+    {//join fo the user and the subscrition 
+        //User has ->id
+        //subscription 
       $lookup: {
         from: "subscriptions",
         localField: "_id",
@@ -486,6 +513,14 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
       },
     },
     {
+   /*
+        the below addfields stage-> in mondoDB allows to add new fields to
+        the documents that are being processed or modify the existin ones
+        in this case User model will or we can document will have new field 
+        like the subscribeCount
+        ->Each  User  document will now have an additional subscribedCount field 
+        that contains the calcluaed size of the subcribers.
+    */
       $addFields: {
         subscribersCount: {
           $size: "$subscribers",
@@ -494,15 +529,27 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
           $size: "$subscribedTo",
         },
         isSubscribed: {
+            //condition operator that works similarly like if-else
           $cond: {
+            //in opeartor check whether this exist in the array or not
             if: { $in: [req.user?._id, "$subscribers.subscriber"] },
             then: true,
             else: false,
+            /*
+            Condition ($in): The $in operator checks 
+            if the req.user._id (the logged-in user's ID) exists
+             in the subscribers.subscriber array. "$subscribers.subscriber"
+              refers to the subscriber field in the array of subscribers obtained from the $lookup stage.
+
+            The subscribers array holds objects where each object is a document from the subscriptions collection, 
+            and subscribers.subscriber refers to the subscriber field in those documents */
           },
         },
       },
     },
     {
+        //project stage is used to specify which fields should be included
+        //the fields with the 1 will be included in the document
       $project: {
         fullName: 1,
         username: 1,
@@ -515,7 +562,30 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
       },
     },
   ]);
+  /* overall flow of aggregation:
+  ->match->finds the User document that corresponds to the username
+  ->lookup->fetches related documents from the subscription collection to get 
+  user's subscribers and the channels they are subscribed to
+  calculate->->add the calculated fields like subscribersCount  
+   and channelSubscribedCount and checks if the logged-in user is subscribed to this channel
+   ->project->select and specifies that which fields should be returned in the final outpput*/
+/* what does  aggregation pipeline does?
+ ->The orognal User documnet in the db is not modified
+ ->the aggraegation piepline only processes and returns the result which is modified
+ ->the chnages will not be made into the db untill we itself update the db
+ ->why use agregation?
+ we can avoid redudnacy bu using this because suppose user stores the subscriber count in the
+ db then if a user unscriber?we would need to update the fild manually eveyr timr 
+ which can increase the complexity
+ ->how this will work on the frontend?
+ whenerver there is api request from the frontend to fetch user profile
+ suppose,then the aggratiuon pipleline will run on the fly,
+ so the pai will return a reponse that includes dynamically generated
+ fields like subscribers count etc
+ so frontend simply can take the data and display it
+ ->
 
+*/
   if (!channel?.length) {
     throw new ApiError(404, "channel does not exists");
   }
